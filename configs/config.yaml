@@ -234,7 +234,7 @@ hardware:
 logging:
   tensorboard: false
   wandb:
-    enabled: false
+    enabled: true
     project: "audio-event-detection"
     
   checkpoint:

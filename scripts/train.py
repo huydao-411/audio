@@ -81,6 +81,7 @@ class Trainer:
         self.best_val_loss = float('inf')
         self.best_val_f1 = 0.0
         self.patience_counter = 0
+        self.saved_checkpoints = []  # Track saved checkpoint paths
         
         # Setup logging
         self.writer = None
@@ -326,6 +327,14 @@ class Trainer:
         # Save regular checkpoint
         checkpoint_path = os.path.join(checkpoint_dir, f'checkpoint_epoch_{self.current_epoch}.pth')
         torch.save(checkpoint, checkpoint_path)
+        
+        # Manage max_checkpoints limit
+        self.saved_checkpoints.append(checkpoint_path)
+        max_checkpoints = self.config['logging']['checkpoint'].get('max_checkpoints', 5)
+        if max_checkpoints > 0 and len(self.saved_checkpoints) > max_checkpoints:
+            oldest_ckpt = self.saved_checkpoints.pop(0)
+            if os.path.exists(oldest_ckpt):
+                os.remove(oldest_ckpt)
         
         # Save best model
         if is_best:
