@@ -272,7 +272,8 @@ class AudioPreprocessor:
         esc50_to_target = {
             'crying_baby': 'scream',
             'fireworks': 'explosion',
-            'crackling_fire': 'fire_crackling'
+            'crackling_fire': 'fire_crackling',
+            'glass_breaking': 'glass_breaking'
         }
 
         metadata['target_class'] = metadata['category'].map(esc50_to_target).fillna('normal')
