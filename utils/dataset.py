@@ -58,6 +58,19 @@ class AudioEventDataset(Dataset):
         feature_path = row.get('file_path', row.get('feature_path'))
         mel_spec = np.load(feature_path)
         
+        # Pad or truncate to fixed length
+        # (models like AST or DataLoader need fixed size for batched tensor stack)
+        if 'ast' in self.config.get('model', {}):
+            target_frames = self.config['model']['ast']['input_size'][1]
+        else:
+            target_frames = int(self.config['preprocessing']['duration'] * self.config['preprocessing']['target_sample_rate'] // self.config['preprocessing']['hop_length']) + 1
+
+        if mel_spec.shape[1] > target_frames:
+            mel_spec = mel_spec[:, :target_frames]
+        elif mel_spec.shape[1] < target_frames:
+            pad_width = target_frames - mel_spec.shape[1]
+            mel_spec = np.pad(mel_spec, ((0, 0), (0, pad_width)), mode='constant', constant_values=-80.0) # -80dB is silence
+        
         # Get label
         label = row['label']
         
