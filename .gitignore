@@ -35,6 +35,8 @@ env/
 data/raw/
 data/processed/
 data/augmented/
+data/final_dataset/
+data/metadata/
 *.wav
 *.mp3
 *.flac

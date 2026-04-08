@@ -170,6 +170,7 @@ class RawAudioDataset(Dataset):
 
 def create_data_loaders(config_path: str = "configs/config.yaml",
                        processed_metadata_path: str = "data/processed/spectrograms/processed_metadata.csv",
+                       augmented_metadata_path: str = "data/metadata/augmented_metadata.csv",
                        batch_size: Optional[int] = None) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
     Create train, validation, and test data loaders
@@ -190,7 +191,15 @@ def create_data_loaders(config_path: str = "configs/config.yaml",
         batch_size = config['training']['batch_size']
     
     # Load processed metadata
-    metadata = pd.read_csv(processed_metadata_path)
+    df_orig = pd.read_csv(processed_metadata_path)
+    if os.path.exists(augmented_metadata_path):
+        df_aug = pd.read_csv(augmented_metadata_path)
+        metadata = pd.concat([df_orig, df_aug], ignore_index=True)
+        print(f"Merged data: Original ({len(df_orig)}) + Augmentation ({len(df_aug)}) = Total ({len(metadata)})")
+    else:
+        metadata = df_orig
+        print(f"Can not find the augmented file. Used original file: ({len(df_orig)})")
+            
     
     # Split by fold (using UrbanSound8K fold structure)
     # Folds 1-7: train, Fold 8-9: validation, Fold 10: test

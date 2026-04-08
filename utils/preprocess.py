@@ -324,6 +324,15 @@ class AudioPreprocessor:
             merged_df = pd.concat(all_data, ignore_index=True)
             
             # Save to CSV
+            normal_df = merged_df[merged_df['target_class'] == 'normal']
+            targets_df = merged_df[merged_df['target_class'] != 'normal']
+            
+            if len(normal_df) > 4000:
+                print(f"\n[Undersampling] Reducing 'normal' class from {len(normal_df)} to 2000 samples...")
+                normal_df = normal_df.sample(n=4000, random_state=42) 
+            
+            
+            merged_df = pd.concat([targets_df, normal_df], ignore_index=True).sample(frac=1).reset_index(drop=True)
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             merged_df.to_csv(output_path, index=False)
             

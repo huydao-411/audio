@@ -4,11 +4,14 @@ Implements various augmentation techniques for audio data
 """
 
 import numpy as np
+import pandas as pd
 import librosa
+import os
 import torch
 import random
 from typing import Tuple, Optional
 import yaml
+from sklearn.preprocessing import LabelEncoder
 
 
 class AudioAugmentor:
@@ -125,8 +128,8 @@ class AudioAugmentor:
         n_freq_masks = self.techniques['spec_augment']['n_freq_masks']
         
         for _ in range(n_freq_masks):
-            f = random.randint(0, freq_mask_param)
-            f0 = random.randint(0, n_mels - f)
+            f = random.randint(0, min(freq_mask_param, n_mels))
+            f0 = random.randint(0, max(0, n_mels - f))
             spec[f0:f0+f, :] = 0
         
         # Time masking
@@ -134,8 +137,8 @@ class AudioAugmentor:
         n_time_masks = self.techniques['spec_augment']['n_time_masks']
         
         for _ in range(n_time_masks):
-            t = random.randint(0, time_mask_param)
-            t0 = random.randint(0, n_frames - t)
+            t = random.randint(0, min(time_mask_param, n_frames))
+            t0 = random.randint(0, max(0, n_frames - t))
             spec[:, t0:t0+t] = 0
         
         return spec
@@ -269,49 +272,119 @@ class SpecAugment(torch.nn.Module):
         
         # Frequency masking
         for _ in range(self.n_freq_masks):
-            f = random.randint(0, self.freq_mask_param)
-            f0 = random.randint(0, n_freq - f)
+            f = random.randint(0, min(self.freq_mask_param, n_freq))
+            f0 = random.randint(0, max(0, n_freq - f))
             spec[:, :, f0:f0+f, :] = 0
         
         # Time masking
         for _ in range(self.n_time_masks):
-            t = random.randint(0, self.time_mask_param)
-            t0 = random.randint(0, n_time - t)
+            t = random.randint(0, min(self.time_mask_param, n_time))
+            t0 = random.randint(0, max(0, n_time - t))
             spec[:, :, :, t0:t0+t] = 0
         
         return spec
 
+def export_augmented_data_with_csv_label(csv_path: str, augmentor: AudioAugmentor, output_root: str = "data/metadata", sr=22050):
+    target_classes = ['gunshot', 'siren', 'dog_bark', 'glass_breaking', 'scream', 'explosion', 'fire_crackling']
+    
+    df = pd.read_csv(csv_path)
+    df_filtered = df[df['target_class'].isin(target_classes)].copy()
 
-def test_augmentation():
-    """Test augmentation functions"""
-    import matplotlib.pyplot as plt
-    
-    print("Testing audio augmentation...")
-    
-    # Create dummy audio
-    sr = 22050
-    duration = 4
-    t = np.linspace(0, duration, sr * duration)
-    audio = np.sin(2 * np.pi * 440 * t)  # 440 Hz sine wave
-    
-    # Initialize augmentor
-    augmentor = AudioAugmentor(config_path="../audio_event_detection/configs/config.yaml")
-    
-    # Test augmentations
-    aug_audio = augmentor.augment_audio(audio, sr)
-    
-    print(f"Original audio shape: {audio.shape}")
-    print(f"Augmented audio shape: {aug_audio.shape}")
-    
-    # Test spectrogram augmentation
-    mel_spec = librosa.feature.melspectrogram(y=audio, sr=sr)
-    aug_mel_spec = augmentor.augment_spectrogram(mel_spec)
-    
-    print(f"Original spectrogram shape: {mel_spec.shape}")
-    print(f"Augmented spectrogram shape: {aug_mel_spec.shape}")
-    
-    print("Augmentation test complete!")
+    target_count = 1000 
+    class_counts = df_filtered['target_class'].value_counts()
+    repeat_mapping = {cls: max(1, target_count // count) for cls, count in class_counts.items()}
 
+    data_dir = os.path.join(output_root, "data").replace("\\", "/")
+    os.makedirs(data_dir, exist_ok=True)
+
+    new_metadata_rows = []
+
+    print("--- Starting augmentation ---")
+
+    for idx, row in df_filtered.iterrows():
+        audio_path = row['file_path']
+        current_class = row['target_class']
+        fold = row.get('fold', 0) # Lấy fold cũ hoặc mặc định 0
+        dataset = row.get('dataset', 'augmented')
+        file_base_name = os.path.basename(audio_path).split('.')[0]
+
+        if not os.path.exists(audio_path):
+            continue
+
+        num_repeats = repeat_mapping.get(current_class, 1)
+
+        try:
+            audio_orig, _ = librosa.load(audio_path, sr=sr)
+            
+            for r in range(num_repeats):
+                aug_audio = augmentor.augment_audio(audio_orig, sr)
+                
+                mel_spec = librosa.feature.melspectrogram(y=aug_audio, sr=sr, n_mels=128)
+                mel_spec_db = librosa.power_to_db(mel_spec, ref=np.max)
+                final_spec = augmentor.augment_spectrogram(mel_spec_db)
+
+
+                save_filename = f"{file_base_name}_aug_v{r}.npy"
+                save_path = os.path.join(data_dir, save_filename).replace("\\", "/")
+                np.save(save_path, final_spec)
+
+                new_metadata_rows.append({
+                    'file_path': save_path,
+                    'target_class': current_class,
+                    'label': row['label'],
+                    'fold': fold,
+                    'dataset': dataset
+                })
+
+            if len(new_metadata_rows) % 100 == 0:
+                print(f"Create at {len(new_metadata_rows)} sample...")
+
+        except Exception as e:
+            print(f"Error at {audio_path}: {e}")
+
+    new_df = pd.DataFrame(new_metadata_rows)
+    csv_output_path = os.path.join(output_root, "augmented_metadata.csv").replace("\\", "/")
+    new_df.to_csv(csv_output_path, index=False)
+
+    print(f"\n Finished!")
+    print(f"- Num file .npy created: {len(new_df)}")
+    print(f"- File label total: {csv_output_path}")
 
 if __name__ == "__main__":
-    test_augmentation()
+    augmentor = AudioAugmentor(config_path="configs/config.yaml")
+    export_augmented_data_with_csv_label("data/processed/merged_dataset.csv", augmentor)
+
+
+# def test_augmentation():
+#     """Test augmentation functions"""
+#     import matplotlib.pyplot as plt
+    
+#     print("Testing audio augmentation...")
+    
+#     # Create dummy audio
+#     sr = 22050
+#     duration = 4
+#     t = np.linspace(0, duration, sr * duration)
+#     audio = np.sin(2 * np.pi * 440 * t)  # 440 Hz sine wave
+    
+#     # Initialize augmentor
+#     augmentor = AudioAugmentor(config_path="configs/config.yaml")
+    
+#     # Test augmentations
+#     aug_audio = augmentor.augment_audio(audio, sr)
+    
+#     print(f"Original audio shape: {audio.shape}")
+#     print(f"Augmented audio shape: {aug_audio.shape}")
+    
+#     # Test spectrogram augmentation
+#     mel_spec = librosa.feature.melspectrogram(y=audio, sr=sr)
+#     aug_mel_spec = augmentor.augment_spectrogram(mel_spec)
+    
+#     print(f"Original spectrogram shape: {mel_spec.shape}")
+#     print(f"Augmented spectrogram shape: {aug_mel_spec.shape}")
+    
+#     print("Augmentation test complete!")
+
+
+# if __name__ == "__main__":
+#     test_augmentation()
