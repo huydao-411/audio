@@ -78,8 +78,8 @@ class AudioEventDataset(Dataset):
         if self.transform is not None and self.mode == 'train':
             mel_spec = self.transform(mel_spec)
         
-        # Convert to tensor
-        mel_spec = torch.FloatTensor(mel_spec).unsqueeze(0)  # Add channel dimension
+        # Convert to tensor (ensure contiguous memory with copy() to avoid DataLoader resize errors)
+        mel_spec = torch.FloatTensor(mel_spec.copy()).unsqueeze(0)  # Add channel dimension
         label = torch.LongTensor([label])
         return mel_spec, label
     
