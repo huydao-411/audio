@@ -55,7 +55,7 @@ class AudioEventDataset(Dataset):
         row = self.metadata.iloc[idx]
         
         # Load preprocessed spectrogram
-        feature_path = row['feature_path']
+        feature_path = row.get('file_path', row.get('feature_path'))
         mel_spec = np.load(feature_path)
         
         # Get label
@@ -169,15 +169,14 @@ class RawAudioDataset(Dataset):
 
 
 def create_data_loaders(config_path: str = "configs/config.yaml",
-                       processed_metadata_path: str = "data/processed/spectrograms/processed_metadata.csv",
-                       augmented_metadata_path: str = "data/metadata/augmented_metadata.csv",
+                       dataset_path: str = "data/final_dataset/final_dataset.csv",
                        batch_size: Optional[int] = None) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
     Create train, validation, and test data loaders
     
     Args:
         config_path: Path to configuration file
-        processed_metadata_path: Path to processed metadata CSV
+        dataset_path: Path to unified dataset CSV
         batch_size: Batch size (uses config default if None)
         
     Returns:
@@ -190,15 +189,11 @@ def create_data_loaders(config_path: str = "configs/config.yaml",
     if batch_size is None:
         batch_size = config['training']['batch_size']
     
-    # Load processed metadata
-    df_orig = pd.read_csv(processed_metadata_path)
-    if os.path.exists(augmented_metadata_path):
-        df_aug = pd.read_csv(augmented_metadata_path)
-        metadata = pd.concat([df_orig, df_aug], ignore_index=True)
-        print(f"Merged data: Original ({len(df_orig)}) + Augmentation ({len(df_aug)}) = Total ({len(metadata)})")
+    # Load dataset
+    if os.path.exists(dataset_path):
+        metadata = pd.read_csv(dataset_path)
     else:
-        metadata = df_orig
-        print(f"Can not find the augmented file. Used original file: ({len(df_orig)})")
+        raise FileNotFoundError(f"Cannot find dataset at {dataset_path}")
             
     
     # Split by fold (using UrbanSound8K fold structure)
