@@ -36,7 +36,12 @@ class RealTimeDetector:
             device: Device to run on
         """
         # Initialize detector
-        self.detector = AudioEventDetector(model_path, config_path, device)
+        self.detector = AudioEventDetector(
+            model_path=model_path, 
+            config_path=config_path, 
+            device=device,
+            root_path=PROJECT_ROOT  # THÊM DÒNG NÀY
+        )
         
         # Audio parameters
         self.sample_rate = 22050
